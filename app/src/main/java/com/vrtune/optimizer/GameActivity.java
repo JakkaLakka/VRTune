@@ -95,6 +95,7 @@ public class GameActivity extends Activity {
         status = new Ui.StatusBar(this);
         body.addView(status.view, Ui.matchWidth(this, 16));
 
+        body.addView(buildReportCard(), Ui.matchWidth(this, 16));
         body.addView(buildPresets(), Ui.matchWidth(this, 16));
         for (String group : Tweaks.groups()) body.addView(buildGroup(group), Ui.matchWidth(this, 16));
         body.addView(buildCustom(), Ui.matchWidth(this, 16));
@@ -112,6 +113,7 @@ public class GameActivity extends Activity {
         Adb adb = Adb.get(this);
         adb.addListener(status);
         if (adb.state() == Adb.State.DISCONNECTED) adb.connect((ok, e) -> { });
+        refreshReport();
     }
 
     @Override
@@ -119,6 +121,97 @@ public class GameActivity extends Activity {
         super.onPause();
         Adb.get(this).removeListener(status);
         if (profile != null) profile.save(this, pkg);
+    }
+
+    // ---- performance report ----
+
+    private TextView reportHead, reportDetails, reportAdvice;
+    private Button reportApply;
+
+    private View buildReportCard() {
+        LinearLayout card = Ui.card(this);
+        LinearLayout top = new LinearLayout(this);
+        top.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout titles = new LinearLayout(this);
+        titles.setOrientation(LinearLayout.VERTICAL);
+        titles.addView(Ui.text(this, "Performance report", 18, R.color.text, true));
+        titles.addView(Ui.text(this,
+                "Optional. When on, VRTune reads the FPS stats the headset already logs, every 30 s while you play, "
+                        + "and stops when the game closes. Nothing runs inside the game, so the cost is negligible.",
+                13, R.color.text_dim, false));
+        top.addView(titles, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        android.widget.Switch sw = new android.widget.Switch(this);
+        sw.setChecked(PerfMonitor.isEnabled(this));
+        sw.setOnCheckedChangeListener((v, on) -> {
+            PerfMonitor.setEnabled(this, on);
+            refreshReport();
+        });
+        top.addView(sw);
+        card.addView(top);
+
+        reportHead = Ui.text(this, "", 16, R.color.accent, true);
+        reportDetails = Ui.text(this, "", 13, R.color.text_dim, false);
+        reportAdvice = Ui.text(this, "", 14, R.color.text, false);
+        card.addView(reportHead, Ui.matchWidth(this, 12));
+        card.addView(reportDetails, Ui.matchWidth(this, 4));
+        card.addView(reportAdvice, Ui.matchWidth(this, 8));
+        reportApply = Ui.button(this, "Apply suggestion", false);
+        LinearLayout.LayoutParams bp = Ui.wrap(this, 0);
+        bp.topMargin = Ui.dp(this, 10);
+        card.addView(reportApply, bp);
+        return card;
+    }
+
+    private void refreshReport() {
+        if (reportHead == null) return;
+        org.json.JSONObject r = PerfMonitor.lastReport(this, pkg);
+        reportApply.setVisibility(View.GONE);
+        if (r == null) {
+            reportHead.setText(PerfMonitor.isEnabled(this)
+                    ? "No report yet. Play using Apply & Launch, then come back here."
+                    : "Turn on to see FPS, dropped frames and tuning tips after you play.");
+            reportHead.setTextColor(Ui.color(this, R.color.text_dim));
+            reportDetails.setText("");
+            reportAdvice.setText("");
+            return;
+        }
+        if (r.optBoolean("none")) {
+            reportHead.setText("Last session: no performance data. Played too briefly, or this game doesn't report stats.");
+            reportHead.setTextColor(Ui.color(this, R.color.warn));
+            reportDetails.setText("");
+            reportAdvice.setText("");
+            return;
+        }
+        String when = android.text.format.DateUtils.getRelativeTimeSpanString(r.optLong("at")).toString();
+        reportHead.setText("Last session (" + when + "): " + r.optString("headline"));
+        String verdict = r.optString("verdict");
+        reportHead.setTextColor(Ui.color(this,
+                "heavy".equals(verdict) ? R.color.bad : "headroom".equals(verdict) ? R.color.good : R.color.accent));
+        String prof = r.optString("profile");
+        reportDetails.setText(r.optString("details") + (prof.isEmpty() ? "" : "\nSettings used: " + prof));
+        reportAdvice.setText(r.optString("advice"));
+        int step = "heavy".equals(verdict) ? -1 : "headroom".equals(verdict) ? 1 : 0;
+        if (step != 0) {
+            reportApply.setVisibility(View.VISIBLE);
+            reportApply.setText(step < 0 ? "Apply suggestion: lower resolution one step" : "Apply suggestion: raise resolution one step");
+            reportApply.setOnClickListener(v -> {
+                shiftResolution(step);
+                setResult("Resolution changed. Tap Apply & Launch to try it.", R.color.text_dim);
+            });
+        }
+    }
+
+    private void shiftResolution(int delta) {
+        Tweaks.Tweak t = Tweaks.byId("resolution");
+        int idx = t.indexOf(profile.selections.get("resolution"));
+        if (idx == 0) { // "Game default" = Quest 3 default size
+            for (int i = 1; i < t.options.size(); i++)
+                if (t.options.get(i).values[0].equals(String.valueOf(Tweaks.BASE_W))) idx = i;
+        }
+        idx = Math.max(1, Math.min(t.options.size() - 1, idx + delta));
+        profile.selections.put("resolution", t.options.get(idx).id());
+        profile.save(this, pkg);
+        bindProfile();
     }
 
     // ---- sections ----
@@ -377,6 +470,7 @@ public class GameActivity extends Activity {
         }
         try {
             Games.launch(this, launch);
+            PerfMonitor.startFor(this, pkg, name);
         } catch (Exception e) {
             // Fall back to launching through the shell.
             Adb.get(this).run("am start -n " + launch.flattenToShortString(), (out, err) -> {

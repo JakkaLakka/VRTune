@@ -15,6 +15,12 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
 
+    <!-- Optional performance report (off by default) runs as a tiny foreground service while a game plays -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Built-in updater opens the system installer for new versions downloaded from GitHub -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <!-- Added implicitly by a library's old minSdk; VRTune doesn't need them. -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" tools:node="remove" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove" />
@@ -46,6 +52,15 @@
             android:exported="false"
             android:screenOrientation="landscape"
             android:configChanges="orientation|screenSize|keyboardHidden|density" />
+        <service
+            android:name=".PerfMonitor"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Reads frame-rate statistics every 30 seconds while a game the user launched is running" />
+        </service>
+
         <receiver
             android:name=".WirelessDebug$BootReceiver"
             android:exported="true">

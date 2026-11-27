@@ -52,12 +52,16 @@ public class MainActivity extends Activity {
         LinearLayout titles = new LinearLayout(this);
         titles.setOrientation(LinearLayout.VERTICAL);
         titles.addView(Ui.text(this, "VRTune", 30, R.color.text, true));
-        titles.addView(Ui.text(this, "Per-game resolution, refresh rate, foveation and clock tuning for Quest", 14, R.color.text_dim, false));
+        titles.addView(Ui.text(this, "Per-game resolution, refresh rate, foveation and clock tuning for Quest  ·  v"
+                + Updater.currentVersion(this), 14, R.color.text_dim, false));
         header.addView(titles, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         Button reset = Ui.button(this, "Reset all", false);
         reset.setOnClickListener(v -> confirmResetAll());
         Button port = Ui.button(this, "Port", false);
         port.setOnClickListener(v -> Ui.askPort(this, Adb.get(this)));
+        Button updates = Ui.button(this, "Updates", false);
+        updates.setOnClickListener(v -> checkForUpdates(true));
+        header.addView(updates, Ui.wrap(this, 10));
         header.addView(reset, Ui.wrap(this, 10));
         header.addView(port);
         root.addView(header);
@@ -126,7 +130,33 @@ public class MainActivity extends Activity {
         if (!prefs.getBoolean("seen_help", false)) {
             prefs.edit().putBoolean("seen_help", true).apply();
             Ui.showSetupHelp(this);
+        } else if (Updater.autoCheckDue(this)) {
+            checkForUpdates(false);
         }
+    }
+
+    /** manual = user tapped "Updates" (show "up to date"/errors); otherwise stay quiet unless there's a new version. */
+    private void checkForUpdates(boolean manual) {
+        if (manual) Toast.makeText(this, "Checking for updates…", Toast.LENGTH_SHORT).show();
+        Updater.check(this, (newer, error) -> {
+            if (isFinishing()) return;
+            if (newer == null) {
+                if (manual) Toast.makeText(this, error != null
+                        ? "Couldn't check for updates: " + error
+                        : "You're on the latest version (v" + Updater.currentVersion(this) + ").", Toast.LENGTH_LONG).show();
+                return;
+            }
+            String notes = newer.notes == null ? "" : newer.notes.trim();
+            if (notes.length() > 600) notes = notes.substring(0, 600) + "…";
+            new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("Update available: " + newer.tag)
+                    .setMessage("You have v" + Updater.currentVersion(this) + ". Your game profiles are kept when you update."
+                            + (notes.isEmpty() ? "" : "\n\n" + notes))
+                    .setPositiveButton("Download & install", (d, w) -> Updater.downloadAndInstall(this, newer))
+                    .setNeutralButton("Open page", (d, w) -> Updater.openReleasePage(this))
+                    .setNegativeButton("Later", null)
+                    .show();
+        });
     }
 
     @Override

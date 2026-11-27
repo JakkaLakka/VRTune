@@ -23,6 +23,10 @@ These are Meta's documented system properties
 
 **Presets:** Battery saver · Balanced · Smooth 120 · Sharp · Ultra sharp · Game default.
 
+**Performance report (optional, off by default):** turn it on in a game's screen. While you play, VRTune reads the FPS stats the headset already logs, once every 30 seconds, and stops when the game closes. Nothing runs inside the game. Afterwards you see average FPS, time below target, dropped frames, GPU/CPU load and temperature, plus a one-tap suggestion (e.g. lower resolution one step).
+
+**Updates:** VRTune checks this repo's Releases twice a day (or tap **Updates**). It downloads the new APK and opens the installer, and your profiles are kept.
+
 **About sharpening and anti-aliasing:** Quest has no documented system-wide sharpen or MSAA switch. The effective way to get a sharper, less jagged image is supersampling: raise *Render resolution* to 1.2x–1.5x and lower foveation. The app warns you when a combination is likely too heavy for the GPU.
 
 ## How it works
