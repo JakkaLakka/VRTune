@@ -77,17 +77,137 @@ final class Ui {
     }
 
     static void showSetupHelp(Activity a) {
-        info(a, "One-time setup (repeat after each reboot)",
-                "VRTune changes Meta's hidden performance settings through the headset's own ADB service. "
-                        + "Android only lets ADB turn that service on, so after each reboot it must be woken up once:\n\n"
-                        + "1. Enable Developer Mode for your headset in the Meta Horizon phone app.\n"
-                        + "2. Connect the Quest to a PC with a USB-C cable and allow USB debugging in the headset.\n"
-                        + "3. On the PC, run enable-wireless-adb.bat (from the GitHub release), or:\n"
-                        + "      adb tcpip 5555\n"
-                        + "4. Unplug the cable, open VRTune, tap Connect.\n"
-                        + "5. The first time, the headset asks to allow debugging for VRTune. Tick \"Always allow\" and Allow.\n\n"
-                        + "Settings take effect when the game starts, so use \"Apply & Launch\". "
-                        + "They are global and reset on reboot; \"Reset all\" clears them.");
+        info(a, "Setup (no PC needed)",
+                "VRTune changes Meta's hidden performance settings through the headset's own debugging service.\n\n"
+                        + "ONE-TIME PAIRING, in the headset:\n"
+                        + "1. Developer Mode must be on (Meta Horizon phone app → Devices → Headset settings).\n"
+                        + "2. Connect the headset to Wi-Fi.\n"
+                        + "3. Open Settings → System → Developer → Wireless debugging. Turn it on and allow it for this network.\n"
+                        + "4. Tap \"Pair device with pairing code\" and leave that window open beside VRTune.\n"
+                        + "5. In VRTune tap \"Pair (no PC)\" and type the 6-digit code.\n\n"
+                        + "AFTER A REBOOT: VRTune turns Wireless debugging back on by itself. "
+                        + "If it can't, turn Wireless debugging on in Settings and tap Connect. No re-pairing needed.\n\n"
+                        + "PC ALTERNATIVE: plug into a PC and run 'adb tcpip 5555' (or enable-wireless-adb.bat), then tap Connect.\n\n"
+                        + "Settings take effect when a game starts, so use \"Apply & Launch\". "
+                        + "They are global and reset on reboot. \"Reset all\" clears them.");
+    }
+
+    /** Wireless-debugging pairing: detects the pairing port automatically, the user types the code. */
+    static void showPairDialog(Activity a) {
+        Adb adb = Adb.get(a);
+        LinearLayout box = new LinearLayout(a);
+        box.setOrientation(LinearLayout.VERTICAL);
+        int p = dp(a, 20);
+        box.setPadding(p, dp(a, 8), p, 0);
+
+        box.addView(text(a,
+                "1. Open Settings → System → Developer → Wireless debugging and turn it on (Wi-Fi must be connected).\n"
+                        + "2. Tap \"Pair device with pairing code\" and keep that window open next to VRTune.\n"
+                        + "3. Type the 6-digit code below. The port fills in by itself.", 14, R.color.text_dim, false));
+
+        Button openSettings = button(a, "Open developer settings", false);
+        openSettings.setOnClickListener(v -> {
+            String[] actions = {"android.settings.ADB_WIFI_SETTINGS",
+                    android.provider.Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS};
+            for (String act : actions) {
+                try {
+                    a.startActivity(new android.content.Intent(act)
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));
+                    return;
+                } catch (Exception ignored) {
+                }
+            }
+            android.widget.Toast.makeText(a, "Open Settings → System → Developer yourself (Meta blocks the shortcut).",
+                    android.widget.Toast.LENGTH_LONG).show();
+        });
+        box.addView(openSettings, matchWidth(a, 12));
+
+        EditText code = new EditText(a);
+        code.setHint("6-digit pairing code");
+        code.setInputType(InputType.TYPE_CLASS_NUMBER);
+        code.setTextColor(color(a, R.color.text));
+        code.setHintTextColor(color(a, R.color.text_dim));
+        code.setTextSize(22);
+        code.setGravity(Gravity.CENTER);
+        code.setBackgroundResource(R.drawable.field);
+        box.addView(code, matchWidth(a, 14));
+
+        EditText port = new EditText(a);
+        port.setHint("Pairing port (auto)");
+        port.setInputType(InputType.TYPE_CLASS_NUMBER);
+        port.setTextColor(color(a, R.color.text));
+        port.setHintTextColor(color(a, R.color.text_dim));
+        port.setGravity(Gravity.CENTER);
+        port.setBackgroundResource(R.drawable.field);
+        box.addView(port, matchWidth(a, 10));
+
+        TextView status = text(a, "Looking for the pairing window…", 13, R.color.text_dim, false);
+        box.addView(status, matchWidth(a, 8));
+
+        AlertDialog d = new AlertDialog.Builder(a, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("Pair with Wireless debugging")
+                .setView(box)
+                .setPositiveButton("Pair", null)
+                .setNegativeButton("Close", null)
+                .create();
+
+        boolean[] open = {true};
+        Runnable[] scan = new Runnable[1];
+        scan[0] = () -> adb.findPairingPort((found, err) -> {
+            if (!open[0]) return;
+            if (found != null && found > 0) {
+                if (!String.valueOf(found).equals(port.getText().toString())) port.setText(String.valueOf(found));
+                status.setText("Pairing window found (port " + found + "). Enter the code and tap Pair.");
+                status.setTextColor(color(a, R.color.good));
+            } else if (port.getText().length() == 0) {
+                status.setText("Pairing window not found yet. Open it in Settings, or type the port "
+                        + "(the number after ':' under \"IP address & Port\").");
+                status.setTextColor(color(a, R.color.warn));
+            }
+            port.postDelayed(scan[0], 2500);
+        });
+
+        d.setOnShowListener(x -> {
+            scan[0].run();
+            Button pair = d.getButton(AlertDialog.BUTTON_POSITIVE);
+            pair.setOnClickListener(v -> {
+                String c = code.getText().toString().trim();
+                int pp;
+                try {
+                    pp = Integer.parseInt(port.getText().toString().trim());
+                } catch (NumberFormatException e) {
+                    pp = -1;
+                }
+                if (c.length() < 6) {
+                    status.setText("Enter the 6-digit code shown in the pairing window.");
+                    status.setTextColor(color(a, R.color.bad));
+                    return;
+                }
+                if (pp <= 0 || pp > 65535) {
+                    status.setText("Port not found yet. Keep the pairing window open, or type the port.");
+                    status.setTextColor(color(a, R.color.bad));
+                    return;
+                }
+                pair.setEnabled(false);
+                status.setText("Pairing…");
+                status.setTextColor(color(a, R.color.text_dim));
+                adb.pair(pp, c, (ok, err) -> {
+                    pair.setEnabled(true);
+                    if (Boolean.TRUE.equals(ok)) {
+                        open[0] = false;
+                        d.dismiss();
+                        info(a, "Paired!", "VRTune is connected without a PC. After a reboot it reconnects by itself, "
+                                + "or just turn Wireless debugging back on and tap Connect.");
+                    } else {
+                        status.setText(err == null ? "Pairing failed." : Adb.friendly(err)
+                                + "\nCodes expire: tap \"Pair device with pairing code\" again for a fresh one.");
+                        status.setTextColor(color(a, R.color.bad));
+                    }
+                });
+            });
+        });
+        d.setOnDismissListener(x -> open[0] = false);
+        d.show();
     }
 
     static void askPort(Activity a, Adb adb) {
@@ -132,13 +252,18 @@ final class Ui {
             lp.setMarginEnd(dp(a, 10));
             connect = button(a, "Connect", true);
             connect.setOnClickListener(v -> Adb.get(a).connect((ok, err) -> { }));
+            pair = button(a, "Pair (no PC)", true);
+            pair.setOnClickListener(v -> showPairDialog(a));
             Button help = button(a, "Setup help", false);
             help.setOnClickListener(v -> showSetupHelp(a));
             view.addView(dot);
             view.addView(label, lp);
+            view.addView(pair, wrap(a, 10));
             view.addView(connect, wrap(a, 10));
             view.addView(help);
         }
+
+        private final Button pair;
 
         @Override
         public void onStatus(Adb.State state, String message) {
@@ -151,8 +276,11 @@ final class Ui {
                 default: col = R.color.bad;
             }
             dot.setTextColor(color(ctx, col));
-            connect.setVisibility(state == Adb.State.CONNECTED ? View.GONE : View.VISIBLE);
+            boolean connected = state == Adb.State.CONNECTED;
+            connect.setVisibility(connected ? View.GONE : View.VISIBLE);
             connect.setEnabled(state == Adb.State.DISCONNECTED);
+            pair.setVisibility(connected ? View.GONE : View.VISIBLE);
+            pair.setEnabled(state == Adb.State.DISCONNECTED);
         }
     }
 }

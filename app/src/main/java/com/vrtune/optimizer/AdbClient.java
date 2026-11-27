@@ -18,7 +18,7 @@ import java.security.GeneralSecurityException;
  * Minimal ADB wire-protocol client (legacy TCP transport, i.e. after `adb tcpip 5555`).
  * Only what we need: connect, RSA auth, and running "shell:" commands one at a time.
  */
-final class AdbClient implements Closeable {
+final class AdbClient implements Closeable, AdbShell {
     interface ApprovalListener {
         void onWaitingForApproval();
     }
@@ -121,12 +121,14 @@ final class AdbClient implements Closeable {
     }
 
     /** Longest command that fits in one OPEN packet. */
-    int maxCommandLength() {
+    @Override
+    public int maxCommandLength() {
         return deviceMaxData - 16;
     }
 
     /** Runs a command via "shell:" and returns its combined output. */
-    synchronized String shell(String command) throws IOException {
+    @Override
+    public synchronized String shell(String command) throws IOException {
         if (closed) throw new IOException("Connection closed");
         int local = nextLocalId++;
         send(A_OPEN, local, 0, ("shell:" + command + "\0").getBytes(StandardCharsets.UTF_8));
@@ -154,7 +156,8 @@ final class AdbClient implements Closeable {
         }
     }
 
-    boolean isOpen() {
+    @Override
+    public boolean isOpen() {
         return !closed && socket.isConnected() && !socket.isClosed();
     }
 

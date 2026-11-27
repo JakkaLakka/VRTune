@@ -27,7 +27,12 @@ These are Meta's documented system properties
 
 ## How it works
 
-Android only lets the `shell` user change `debug.oculus.*` properties. VRTune has a small built-in ADB client (`AdbClient.java`) that connects to the headset's **own** ADB service on `127.0.0.1:5555`. It authenticates with its own RSA key and runs `setprop`. When you tap **Apply & Launch** it:
+Android only lets the `shell` user change `debug.oculus.*` properties. VRTune connects to the headset's **own** ADB service from inside the headset and runs `setprop`. It supports two connection types:
+
+- **Wireless debugging (no PC):** pair once with a 6-digit code from Quest Settings. VRTune finds the port automatically over mDNS and connects over TLS. After the first connection it grants itself `WRITE_SECURE_SETTINGS`, so it can switch Wireless debugging back on after a reboot.
+- **Legacy port 5555 (PC):** after `adb tcpip 5555`, using the built-in client in `AdbClient.java`.
+
+When you tap **Apply & Launch** it:
 
 1. force-stops the game (games read these values at start-up),
 2. clears all VRTune-managed properties,
@@ -39,19 +44,25 @@ The properties are global and reset when the headset reboots. **Reset all** clea
 ## Install on the Quest 3
 
 1. **Developer Mode:** in the Meta Horizon phone app, go to *Devices → your headset → Headset settings → Developer mode → On*. Reboot the headset.
-2. **Install the APK:** use [SideQuest](https://sidequestvr.com/setup-howto) (drag `VRTune.apk` onto it), or with platform-tools:
+2. **Install the APK (once):** Meta doesn't allow installing APKs from inside the headset, so this step needs a PC, Mac or Android phone. Use [SideQuest](https://sidequestvr.com/setup-howto) (drag `VRTune.apk` onto it), or:
    ```
    adb install -r VRTune.apk
    ```
-3. **Wake up wireless ADB (after every reboot):** plug the Quest into a PC and run `enable-wireless-adb.bat` (from the release), or:
-   ```
-   adb tcpip 5555
-   ```
-   Then unplug.
-4. In the headset, open **Library → Unknown Sources → VRTune** and tap **Connect**.
-5. The first time, the headset asks *"Allow USB debugging?"* for VRTune. Tick **Always allow** and press **Allow**.
 
-Step 3 is needed after each reboot because the headset turns its ADB network port off on restart. Android doesn't let an app turn it back on by itself.
+## Connect without a PC (recommended)
+
+All in the headset:
+
+1. Connect the headset to **Wi-Fi**.
+2. Open **Settings → System → Developer → Wireless debugging**. Turn it on and allow it for this network.
+3. Tap **Pair device with pairing code** and leave that window open.
+4. Open **Library → Unknown Sources → VRTune** next to it and tap **Pair (no PC)**. The port fills in by itself. Type the 6-digit code and tap **Pair**.
+
+That's it. **After a reboot**, VRTune turns Wireless debugging back on by itself and reconnects. If that ever fails, turn Wireless debugging on in Settings and tap **Connect**. You won't need to pair again.
+
+## Connect with a PC (alternative)
+
+Plug the Quest into a PC and run `enable-wireless-adb.bat` (from the release) or `adb tcpip 5555`. Unplug, open VRTune and tap **Connect**. The first time, allow debugging for VRTune in the headset (tick **Always allow**).
 
 ## Build it yourself
 
@@ -82,4 +93,4 @@ If you don't add them, CI still builds, but each build is signed with a throwawa
 
 Not affiliated with Meta. These are developer settings; aggressive CPU/GPU levels raise heat and battery drain. Everything resets on reboot. Use at your own risk.
 
-License: MIT
+License: MIT. Wireless-debugging pairing uses [libadb-android](https://github.com/MuntashirAkon/libadb-android) (Apache-2.0), [Conscrypt](https://github.com/google/conscrypt) (Apache-2.0) and [Bouncy Castle](https://www.bouncycastle.org/) (MIT).
