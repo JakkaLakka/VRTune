@@ -44,10 +44,9 @@ The properties are global and reset when the headset reboots. **Reset all** clea
 ## Install on the Quest 3
 
 1. **Developer Mode:** in the Meta Horizon phone app, go to *Devices → your headset → Headset settings → Developer mode → On*. Reboot the headset.
-2. **Install the APK (once):** Meta doesn't allow installing APKs from inside the headset, so this step needs a PC, Mac or Android phone. Use [SideQuest](https://sidequestvr.com/setup-howto) (drag `VRTune.apk` onto it), or:
-   ```
-   adb install -r VRTune.apk
-   ```
+2. **Install the APK, in the headset:** open the Quest browser and go to this repo's **Releases** page. Download `VRTune.apk`, open it from your downloads/Files and tap **Install**. To update later, install the newer APK the same way; your settings are kept.
+
+   *From a PC instead:* use [SideQuest](https://sidequestvr.com/setup-howto) (drag `VRTune.apk` onto it), or `adb install -r VRTune.apk`.
 
 ## Connect without a PC (recommended)
 
