@@ -30,6 +30,7 @@ jobs:
           if [ -n "$KEYSTORE_BASE64" ]; then
             echo "$KEYSTORE_BASE64" | base64 -d > release.jks
             echo "KEYSTORE_FILE=release.jks" >> "$GITHUB_ENV"
+            echo "SIGNED=true" >> "$GITHUB_ENV"
             echo "Release key found."
           else
             echo "No KEYSTORE_BASE64 secret - building with a debug key."
@@ -51,7 +52,9 @@ jobs:
           path: VRTune.apk
 
       - name: Publish GitHub release
-        if: startsWith(github.ref, 'refs/tags/v')
+        # Only auto-publish when the release signing key is configured; otherwise
+        # upload the locally built (properly signed) APK to the release by hand.
+        if: startsWith(github.ref, 'refs/tags/v') && env.SIGNED == 'true'
         uses: softprops/action-gh-release@v2
         with:
           files: |
