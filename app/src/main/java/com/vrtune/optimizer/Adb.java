@@ -220,8 +220,8 @@ final class Adb {
             closeClient();
             String msg;
             if (tlsError != null) msg = friendly(tlsError);
-            else if (isPaired()) msg = "Wireless debugging is off. Turn it on in Settings → System → Developer, then tap Connect.";
-            else msg = "Not set up yet. Tap \"Pair (no PC)\" to connect using Wireless debugging.";
+            else if (isPaired()) msg = "Wireless debugging is off. Tap \"Pair (no PC)\" → \"Open Android Wireless debugging\", turn it on, then tap Connect.";
+            else msg = "Not set up yet. Tap \"Pair (no PC)\" to connect, or see Setup help.";
             setState(State.DISCONNECTED, msg);
             throw new NeedsSetupException(msg);
         } catch (Exception e) {
@@ -240,7 +240,7 @@ final class Adb {
         if (port <= 0 && !wasOn) port = AdbDiscovery.findPort(ctx, AdbDiscovery.CONNECT, 4000);
         if (port <= 0) {
             if (!WirelessDebug.isOn(ctx))
-                throw new NeedsSetupException("Wireless debugging is off. Turn it on in Settings → System → Developer → Wireless debugging (Wi-Fi must be connected).");
+                throw new NeedsSetupException("Wireless debugging is off and VRTune couldn't turn it on. Tap \"Pair (no PC)\" → \"Open Android Wireless debugging\" (Wi-Fi must be connected).");
             throw new NeedsSetupException("Wireless debugging is on but its port wasn't found. Make sure Wi-Fi is connected, then tap Connect.");
         }
         TlsAdb tls = TlsAdb.create(ctx);
@@ -270,6 +270,19 @@ final class Adb {
             try {
                 client.shell("pm grant " + ctx.getPackageName() + " android.permission.WRITE_SECURE_SETTINGS");
             } catch (Exception ignored) {
+            }
+        }
+        if (client instanceof AdbClient) {
+            // Our key was just approved ("Always allow"), and adbd trusts the same keys over Wireless
+            // debugging. Remember that and switch Wireless debugging on, so after a reboot VRTune can
+            // reconnect over TLS without the PC, even when the headset hides the pairing screen.
+            prefs.edit().putBoolean("paired", true).apply();
+            if (prefs.getBoolean("auto_wireless", true)) {
+                try {
+                    if (!WirelessDebug.enable(ctx))
+                        client.shell("settings put global " + WirelessDebug.KEY + " 1");
+                } catch (Exception ignored) {
+                }
             }
         }
     }

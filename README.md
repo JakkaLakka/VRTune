@@ -52,16 +52,24 @@ The properties are global and reset when the headset reboots. **Reset all** clea
 
 All in the headset:
 
+Meta hides **Wireless debugging** from its own *Settings → Developer* page. It still exists in Android's built-in settings, which VRTune opens for you:
+
 1. Connect the headset to **Wi-Fi**.
-2. Open **Settings → System → Developer → Wireless debugging**. Turn it on and allow it for this network.
-3. Tap **Pair device with pairing code** and leave that window open.
-4. Open **Library → Unknown Sources → VRTune** next to it and tap **Pair (no PC)**. The port fills in by itself. Type the 6-digit code and tap **Pair**.
+2. Open **VRTune**, tap **Pair (no PC)**, then tap **Open Android Wireless debugging**.
+3. Turn **Wireless debugging** on and allow it for this network. If you land on *Developer options*, scroll down and tap the words *Wireless debugging*.
+4. Tap **Pair device with pairing code** and leave that window open next to VRTune.
+5. In VRTune, type the 6-digit code (the port fills in by itself) and tap **Pair**.
 
-That's it. **After a reboot**, VRTune turns Wireless debugging back on by itself and reconnects. If that ever fails, turn Wireless debugging on in Settings and tap **Connect**. You won't need to pair again.
+**After a reboot**, VRTune turns Wireless debugging back on by itself and reconnects. You won't need to pair again.
 
-## Connect with a PC (alternative)
+## One-time PC or phone setup (if your headset blocks the screen above)
 
-Plug the Quest into a PC and run `enable-wireless-adb.bat` (from the release) or `adb tcpip 5555`. Unplug, open VRTune and tap **Connect**. The first time, allow debugging for VRTune in the headset (tick **Always allow**).
+Some Quest software versions block Android's Wireless debugging screen. Then do this **once**:
+
+1. Plug the Quest into a PC and run `enable-wireless-adb.bat` (from the release) or `adb tcpip 5555`.
+2. Unplug, open VRTune and tap **Connect**. In the headset prompt, tick **Always allow** and press **Allow**.
+
+VRTune then grants itself permission to switch Wireless debugging on, and the headset already trusts its key. After later reboots it reconnects over Wi-Fi **without the PC**.
 
 ## Build it yourself
 

@@ -77,19 +77,60 @@ final class Ui {
     }
 
     static void showSetupHelp(Activity a) {
-        info(a, "Setup (no PC needed)",
-                "VRTune changes Meta's hidden performance settings through the headset's own debugging service.\n\n"
-                        + "ONE-TIME PAIRING, in the headset:\n"
-                        + "1. Developer Mode must be on (Meta Horizon phone app → Devices → Headset settings).\n"
-                        + "2. Connect the headset to Wi-Fi.\n"
-                        + "3. Open Settings → System → Developer → Wireless debugging. Turn it on and allow it for this network.\n"
-                        + "4. Tap \"Pair device with pairing code\" and leave that window open beside VRTune.\n"
-                        + "5. In VRTune tap \"Pair (no PC)\" and type the 6-digit code.\n\n"
-                        + "AFTER A REBOOT: VRTune turns Wireless debugging back on by itself. "
-                        + "If it can't, turn Wireless debugging on in Settings and tap Connect. No re-pairing needed.\n\n"
-                        + "PC ALTERNATIVE: plug into a PC and run 'adb tcpip 5555' (or enable-wireless-adb.bat), then tap Connect.\n\n"
+        info(a, "Setup",
+                "VRTune changes Meta's hidden performance settings through the headset's own debugging service. "
+                        + "Developer Mode must be on (Meta Horizon phone app → Devices → Headset settings).\n\n"
+                        + "OPTION A: NO PC (try this first)\n"
+                        + "1. Connect the headset to Wi-Fi.\n"
+                        + "2. Tap \"Pair (no PC)\", then \"Open Android Wireless debugging\". "
+                        + "Meta hides this screen in its own Settings → Developer, so VRTune opens Android's built-in one.\n"
+                        + "3. Turn Wireless debugging on, tap \"Pair device with pairing code\" and type the code into VRTune.\n\n"
+                        + "OPTION B: ONE-TIME PC OR PHONE (if option A is blocked on your headset)\n"
+                        + "1. Plug the Quest into a PC and run 'adb tcpip 5555' (or enable-wireless-adb.bat).\n"
+                        + "2. Unplug, open VRTune, tap Connect, and in the headset prompt tick \"Always allow\".\n"
+                        + "VRTune then switches on Wireless debugging itself, so after reboots it reconnects without the PC.\n\n"
                         + "Settings take effect when a game starts, so use \"Apply & Launch\". "
                         + "They are global and reset on reboot. \"Reset all\" clears them.");
+    }
+
+    /**
+     * Opens Android's own (hidden on Quest) Settings app at Wireless debugging, bypassing Meta's
+     * Settings which redirects the standard shortcuts. Returns an error message, or null on success.
+     */
+    static String openHiddenWirelessDebugging(Activity a) {
+        String pkg = "com.android.settings";
+        String[] screens = {
+                "com.android.settings.Settings$WirelessDebuggingActivity",
+                "com.android.settings.development.WirelessDebuggingActivity",
+                "com.android.settings.Settings$DevelopmentSettingsDashboardActivity",
+                "com.android.settings.Settings$DevelopmentSettingsActivity",
+                "com.android.settings.DevelopmentSettings",
+                "com.android.settings.Settings",
+        };
+        android.content.pm.PackageManager pm = a.getPackageManager();
+        for (String cls : screens) {
+            android.content.Intent i = new android.content.Intent()
+                    .setClassName(pkg, cls)
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (pm.resolveActivity(i, 0) == null) continue;
+            try {
+                a.startActivity(i);
+                return null;
+            } catch (Exception ignored) {
+                // not exported or blocked by Meta; try the next one
+            }
+        }
+        // Last resort: Android's main Settings via its launcher entry.
+        try {
+            android.content.Intent i = pm.getLaunchIntentForPackage(pkg);
+            if (i != null) {
+                a.startActivity(i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));
+                return "Opened Android Settings. Go to System → Developer options → Wireless debugging.";
+            }
+        } catch (Exception ignored) {
+        }
+        return "This headset's software blocks Android's Wireless debugging screen. "
+                + "Use \"Setup help\" → one-time PC/phone setup instead; after that VRTune works without a PC.";
     }
 
     /** Wireless-debugging pairing: detects the pairing port automatically, the user types the code. */
@@ -101,26 +142,21 @@ final class Ui {
         box.setPadding(p, dp(a, 8), p, 0);
 
         box.addView(text(a,
-                "1. Open Settings → System → Developer → Wireless debugging and turn it on (Wi-Fi must be connected).\n"
-                        + "2. Tap \"Pair device with pairing code\" and keep that window open next to VRTune.\n"
-                        + "3. Type the 6-digit code below. The port fills in by itself.", 14, R.color.text_dim, false));
+                "Meta hides Wireless debugging from its own Settings, but it is in Android's built-in settings.\n"
+                        + "1. Make sure Wi-Fi is connected.\n"
+                        + "2. Tap the button below. In the screen that opens, turn Wireless debugging on "
+                        + "(if you land on Developer options, scroll to Wireless debugging and tap its name).\n"
+                        + "3. Tap \"Pair device with pairing code\" and keep that window open next to VRTune.\n"
+                        + "4. Type the 6-digit code below. The port fills in by itself.", 14, R.color.text_dim, false));
 
-        Button openSettings = button(a, "Open developer settings", false);
+        TextView openResult = text(a, "", 13, R.color.warn, false);
+        Button openSettings = button(a, "Open Android Wireless debugging", false);
         openSettings.setOnClickListener(v -> {
-            String[] actions = {"android.settings.ADB_WIFI_SETTINGS",
-                    android.provider.Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS};
-            for (String act : actions) {
-                try {
-                    a.startActivity(new android.content.Intent(act)
-                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));
-                    return;
-                } catch (Exception ignored) {
-                }
-            }
-            android.widget.Toast.makeText(a, "Open Settings → System → Developer yourself (Meta blocks the shortcut).",
-                    android.widget.Toast.LENGTH_LONG).show();
+            String r = openHiddenWirelessDebugging(a);
+            openResult.setText(r == null ? "" : r);
         });
         box.addView(openSettings, matchWidth(a, 12));
+        box.addView(openResult, matchWidth(a, 4));
 
         EditText code = new EditText(a);
         code.setHint("6-digit pairing code");
