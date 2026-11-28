@@ -83,13 +83,24 @@ final class TlsAdb extends AbsAdbConnectionManager implements AdbShell {
 
     @Override
     public String shell(String command) throws IOException {
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
         try (AdbStream stream = openStream("shell:" + command);
              InputStream in = stream.openInputStream()) {
-            ByteArrayOutputStream buf = new ByteArrayOutputStream();
             byte[] b = new byte[8192];
             int n;
-            while ((n = in.read(b)) != -1) buf.write(b, 0, n);
+            try {
+                while ((n = in.read(b)) != -1) buf.write(b, 0, n);
+            } catch (IOException closed) {
+                // When a command finishes quickly the headset closes the stream, and the library can
+                // report that as "Stream closed" instead of end-of-output. That's a normal finish:
+                // keep what arrived. Only a close before any output counts as a real failure.
+                if (buf.size() == 0 || !String.valueOf(closed.getMessage()).contains("Stream closed")) throw closed;
+            }
             return new String(buf.toByteArray(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            if (buf.size() > 0 && String.valueOf(e.getMessage()).contains("Stream closed"))
+                return new String(buf.toByteArray(), StandardCharsets.UTF_8);
+            throw e;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("Interrupted");

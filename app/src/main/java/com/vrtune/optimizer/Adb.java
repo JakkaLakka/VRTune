@@ -185,13 +185,21 @@ final class Adb {
     }
 
     private String shellWithRetry(String cmd) throws Exception {
-        try {
-            return client.shell(cmd);
-        } catch (IOException first) {
-            closeClient();
-            ensureConnected();
-            return client.shell(cmd);
+        IOException last = null;
+        for (int attempt = 0; attempt < 3; attempt++) {
+            try {
+                if (attempt > 0) {
+                    // Fresh connection after a dropped stream; a short pause lets adbd settle.
+                    closeClient();
+                    Thread.sleep(400L * attempt);
+                    ensureConnected();
+                }
+                return client.shell(cmd);
+            } catch (IOException e) {
+                last = e;
+            }
         }
+        throw last;
     }
 
     private void ensureConnected() throws Exception {

@@ -64,6 +64,7 @@ public final class PerfMonitor extends Service {
     private boolean seenRunning;
     private int missing;
     private int polls;
+    private int errors;
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
@@ -81,6 +82,7 @@ public final class PerfMonitor extends Service {
         seenRunning = false;
         missing = 0;
         polls = 0;
+        errors = 0;
         goForeground();
         handler.removeCallbacksAndMessages(null);
         handler.postDelayed(this::poll, FIRST_POLL_MS);
@@ -116,12 +118,26 @@ public final class PerfMonitor extends Service {
                 int sep = out.indexOf("VRTUNE_SEP");
                 String pid = sep >= 0 ? out.substring(0, sep).trim() : "";
                 String log = sep >= 0 ? out.substring(sep + 10) : out;
+                int fpsLines = 0, parsed = 0, old = 0;
                 for (String line : log.split("\n")) {
+                    if (line.contains("FPS=")) fpsLines++;
                     PerfStats.Sample s = PerfStats.parse(line);
-                    if (s == null || (s.epoch > 0 && s.epoch <= lastEpoch)) continue;
+                    if (s == null) continue;
+                    if (s.epoch > 0 && s.epoch <= lastEpoch) { old++; continue; }
+                    parsed++;
                     if (samples.size() < MAX_SAMPLES) samples.add(s);
                     if (s.epoch > lastEpoch) lastEpoch = s.epoch;
                 }
+                android.util.Log.i("VRTunePerf", "poll " + (polls + 1) + ": out=" + out.length()
+                        + " pid=[" + pid + "] fpsLines=" + fpsLines + " parsed=" + parsed + " old=" + old
+                        + " total=" + samples.size() + " since=" + since
+                        + " head=" + log.trim().replace('\n', '|').substring(0, Math.min(200, log.trim().length())));
+            } else {
+                android.util.Log.w("VRTunePerf", "poll " + (polls + 1) + " failed: " + err);
+            }
+            if (err == null && out != null) {
+                int sep = out.indexOf("VRTUNE_SEP");
+                String pid = sep >= 0 ? out.substring(0, sep).trim() : "";
                 boolean running = !pid.isEmpty() && pid.matches("[\\d\\s]+");
                 if (running) {
                     seenRunning = true;
@@ -130,7 +146,8 @@ public final class PerfMonitor extends Service {
                     missing++;
                 }
             } else {
-                missing++;
+                // A dropped ADB connection isn't the game quitting; retry instead of ending the session.
+                errors++;
             }
             polls++;
             // Save a live snapshot every poll. On Quest a game usually stays resident (suspended) after
@@ -138,7 +155,7 @@ public final class PerfMonitor extends Service {
             saveSnapshot();
 
             boolean timeUp = System.currentTimeMillis() - started > MAX_SESSION_MS;
-            boolean gameGone = seenRunning ? missing >= 1 : missing >= 4;
+            boolean gameGone = (seenRunning ? missing >= 1 : missing >= 4) || errors >= 6;
             if (timeUp || gameGone) finish(true);
             else handler.postDelayed(this::poll, POLL_MS);
         });
