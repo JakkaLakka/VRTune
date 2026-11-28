@@ -63,6 +63,7 @@ public final class PerfMonitor extends Service {
     private long started;
     private boolean seenRunning;
     private int missing;
+    private int polls;
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
@@ -79,6 +80,7 @@ public final class PerfMonitor extends Service {
         started = System.currentTimeMillis();
         seenRunning = false;
         missing = 0;
+        polls = 0;
         goForeground();
         handler.removeCallbacksAndMessages(null);
         handler.postDelayed(this::poll, FIRST_POLL_MS);
@@ -104,7 +106,10 @@ public final class PerfMonitor extends Service {
     private void poll() {
         if (pkg == null) return;
         String since = String.format(Locale.US, "%.3f", lastEpoch);
-        String cmd = "pidof " + pkg + " ; echo VRTUNE_SEP ; logcat -d -v epoch -s VrApi:I -T " + since;
+        // Read every log line since the last poll that carries the runtime's "FPS=x/y" stats, whatever
+        // tag it uses (older software logs it as VrApi; newer builds may use another tag). The grep runs
+        // on the headset, so only the few matching lines come back.
+        String cmd = "pidof " + pkg + " ; echo VRTUNE_SEP ; logcat -d -v epoch -T '" + since + "' | grep -F 'FPS='";
         Adb.get(this).run(cmd, (out, err) -> {
             if (pkg == null) return;
             if (err == null && out != null) {
@@ -127,11 +132,41 @@ public final class PerfMonitor extends Service {
             } else {
                 missing++;
             }
+            polls++;
+            // Save a live snapshot every poll. On Quest a game usually stays resident (suspended) after
+            // you take the headset off or return to VRTune, so we can't wait for it to exit to save.
+            saveSnapshot();
+
             boolean timeUp = System.currentTimeMillis() - started > MAX_SESSION_MS;
             boolean gameGone = seenRunning ? missing >= 1 : missing >= 4;
             if (timeUp || gameGone) finish(true);
             else handler.postDelayed(this::poll, POLL_MS);
         });
+    }
+
+    /**
+     * Writes the session so far, so the game screen shows it even while the game is still resident.
+     * Enough data: a real report. The game has been running a while but logged no stats at all:
+     * a "no data" note, so the user learns this game doesn't report rather than waiting forever.
+     */
+    private void saveSnapshot() {
+        if (pkg == null) return;
+        PerfStats.Report r = PerfStats.report(samples);
+        if (r != null) saveReport(this, pkg, r);
+        else if (seenRunning && polls >= 2 && samples.isEmpty()) saveReport(this, pkg, null);
+        else saveRecording(this, pkg, samples.size());
+    }
+
+    /** "Still collecting" marker, so the card shows the recorder is running rather than "No report yet". */
+    private static void saveRecording(Context c, String pkg, int seconds) {
+        try {
+            JSONObject o = new JSONObject();
+            o.put("recording", true);
+            o.put("samples", seconds);
+            o.put("at", System.currentTimeMillis());
+            c.getSharedPreferences("perf_reports", MODE_PRIVATE).edit().putString(pkg, o.toString()).apply();
+        } catch (Exception ignored) {
+        }
     }
 
     private void finish(boolean stop) {

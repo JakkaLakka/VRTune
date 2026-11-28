@@ -175,6 +175,16 @@ public class GameActivity extends Activity {
             reportAdvice.setText("");
             return;
         }
+        if (r.optBoolean("recording")) {
+            int n = r.optInt("samples");
+            reportHead.setText(n > 0
+                    ? "Recording this session… " + n + "s of stats so far. Play a bit longer, then come back."
+                    : "Recording this session… waiting for the first stats from the game.");
+            reportHead.setTextColor(Ui.color(this, R.color.text_dim));
+            reportDetails.setText("");
+            reportAdvice.setText("");
+            return;
+        }
         if (r.optBoolean("none")) {
             reportHead.setText("Last session: no performance data. Played too briefly, or this game doesn't report stats.");
             reportHead.setTextColor(Ui.color(this, R.color.warn));
